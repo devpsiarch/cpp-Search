@@ -1,13 +1,10 @@
 #include <cmath>
 #include <iostream>
+#include <deque>
+#include <unordered_map>
 #include <vector>
 #include <cmath>
 #include "include/search.hpp"
-
-#define DOWN {1,0}
-#define UP {-1,0}
-#define RIGHT {0,1}
-#define LEFT {0,-1}
 
 class mazeNode : public dtd::state{
 private:
@@ -15,7 +12,26 @@ private:
     int x;
     int y;
 
-    inline static const std::vector<std::vector<int>> directions{DOWN,RIGHT,UP,LEFT};
+    // the user has to define a enum of a actions that can be done
+    enum Actions {
+        down,
+        up,
+        right,
+        left,
+        nothing
+    };
+
+
+    using TransitionModel = const std::unordered_map<Actions,std::pair<std::vector<int>,const char*>>;
+    
+    inline static TransitionModel transition_model{
+        {Actions::down,  {{1, 0}  ,"down"}},
+        {Actions::up,    {{-1, 0} ,"up"}},
+        {Actions::left,  {{0, -1} ,"left"}},
+        {Actions::right, {{0,  1} ,"right"}}
+    };
+
+    // the maze itself
     inline static const std::vector<std::vector<int>> map{
         {-2, 0 , 0 , 0 , 0, 0},
         {0 , 0 , 0 , 1 , 1, 0},
@@ -24,6 +40,7 @@ private:
         {1 , 1 , 1 , 1 , 1, 1}
     };
     
+    // and the goal position (optional depending on the criterion)
     inline static const std::vector<int> goal_position{3,4};
 
     bool is_valid(int nx,int ny)const noexcept{
@@ -72,13 +89,16 @@ protected:
         
 public:
 
+    // impliments the path traced during the search
+    std::deque<Actions> traced_path;
+
     virtual bool is_goal() const noexcept override {
         return mazeNode::map[this->x][this->y] == 2;
     }
 
-    mazeNode(int _x = 0,int _y = 0,int _path_cost = 0) 
-        : dtd::state(_path_cost) , 
-            x(_x) , y(_y) {
+    mazeNode(int _x = 0,int _y = 0,int _path_cost = 0,const std::deque<Actions>& previous = {},Actions actions_performed = Actions::nothing) 
+        : dtd::state(_path_cost) , x(_x) , y(_y) , traced_path(previous) {
+        this->traced_path.push_front(actions_performed);
     }
     ~mazeNode() override {
         // do any stuff you want here (our states for this class are not on the heap)
@@ -97,15 +117,32 @@ public:
     std::vector<dtd::state*> expand() final override {
         std::vector<dtd::state*> ans;
         int dx,dy;
-        for(const auto& dir:mazeNode::directions){
-            dx = dir[0];
-            dy = dir[1];
+        for(const auto& pair:mazeNode::transition_model){
+            dx = pair.second.first[0];
+            dy = pair.second.first[1];
             if(is_valid(x+dx,y+dy) && !is_blocked(x+dx,y+dy)){
-                dtd::state* new_state = new mazeNode(x+dx,dy+y,this->path_cost+1);
+                dtd::state* new_state = new mazeNode(x+dx,dy+y,this->path_cost+1,this->traced_path,pair.first);
                 ans.push_back(new_state);
             }
         }
         return ans;
+    }
+
+    virtual void trace_back_actions() noexcept override {
+        std::cout << "Tracedback actions: \n";
+        while(!this->traced_path.empty()){
+            Actions act = this->traced_path.back();
+
+            auto it = this->transition_model.find(act);
+            if(it != this->transition_model.end()){
+                std::cout << this->transition_model.at(act).second << ",";
+            }else{
+                // we reached the end "then we neet up the print" appended Actions::nothing 
+            }
+
+            this->traced_path.pop_back();
+        }
+        std::cout << "\nDone tracing back the actions.\n";
     }
 
 };
@@ -114,27 +151,11 @@ public:
 int main(void){
 
     dtd::state* init = new mazeNode{};
-    dtd::state* result = dtd::TreeSearchAlgorithm<dtd::Strategy::PRIORITY>(init);
+    dtd::state* result = dtd::GraphSearchAlgorithm<dtd::Strategy::LIFO>(init);
+
+    result->trace_back_actions();
 
     delete result;
 
-    return 0;
-
-    dtd::frontier<dtd::Strategy::PRIORITY,dtd::PolymorphicLessThen> test;
-
-    mazeNode* someNode = new mazeNode{}; // (0,0)
-    
-    std::vector<dtd::state*> expand0 = someNode->expand();
-    dtd::state::print_states(expand0);
-
-    for(auto*ptr:expand0)
-        test.add(ptr);
-
-    dtd::state* gotten = test.get();
-    gotten->print_state();
-
-    delete gotten;
-
-    delete someNode;
     return 0;
 }
