@@ -1,161 +1,164 @@
-#include <cmath>
 #include <iostream>
-#include <deque>
-#include <unordered_map>
-#include <vector>
-#include <cmath>
-#include "include/search.hpp"
+#include <random>
+#include <string>
+#include "include/local_search.hpp"
 
-class mazeNode : public dtd::state{
-private:
-    // the state the user choose to impliment
-    int x;
-    int y;
-
-    // the user has to define a enum of a actions that can be done
-    enum Actions {
-        down,
-        up,
-        right,
-        left,
-        nothing
-    };
-
-
-    using TransitionModel = const std::unordered_map<Actions,std::pair<std::vector<int>,const char*>>;
-    
-    inline static TransitionModel transition_model{
-        {Actions::down,  {{1, 0}  ,"down"}},
-        {Actions::up,    {{-1, 0} ,"up"}},
-        {Actions::left,  {{0, -1} ,"left"}},
-        {Actions::right, {{0,  1} ,"right"}}
-    };
-
-    // the maze itself
-    inline static const std::vector<std::vector<int>> map{
-        {-2, 0 , 0 , 0 , 0, 0},
-        {0 , 0 , 0 , 1 , 1, 0},
-        {0 , 0 , 1 , 1 , 1, 0},
-        {1 , 0 , 0 , 0 , 2, 0},
-        {1 , 1 , 1 , 1 , 1, 1}
-    };
-    
-    // and the goal position (optional depending on the criterion)
-    inline static const std::vector<int> goal_position{3,4};
-
-    bool is_valid(int nx,int ny)const noexcept{
-        if(nx >= (int)map.size() || nx < 0) return false;
-        if(ny >= (int)map[0].size() || ny < 0) return false;
-        return true;
-    }
-
-    bool is_blocked(int nx,int ny) const noexcept {
-        return map[nx][ny] == 1;
-    }
-
-protected:
-    virtual size_t generateHash() const override final{
-        return std::hash<int>{}(this->x) + std::hash<int>{}(this->y);
-    }
-    virtual bool isEqualTo(const dtd::state* other) const override final{
-        std::cout << other << " " << this << '\n';
-        if(other == nullptr) return false;
-        const mazeNode* rhs = dynamic_cast<const mazeNode*>(other);
-        std::cout << "after rhs casting: " << rhs << '\n';
-        if(!rhs) return false;
-        if(rhs->x != this->x || rhs->y != this->y) return false;
-        return true;
-    }
-    virtual bool isLessThen(const dtd::state* other) const override final {
-        if(!other) return false;
-        const mazeNode* rhs = dynamic_cast<const mazeNode*>(other);
-        if(!rhs) return false;
-        // SWO
-        if (this->x != rhs->x) {
-            return this->x < rhs->x;
-        }
-        return this->y < rhs->y;
-    }
-
-
-    // for example we can override the Heuristic methode and define it
-    virtual int Heuristic() const noexcept override {
-        const float dx = (this->x - mazeNode::goal_position[0]);
-        const float dy = (this->y - mazeNode::goal_position[1]);
-
-        return static_cast<int>(std::sqrt(dx*dx+dy*dy));
-    }
-
-        
+class Nqueens : public dtd::local_node {
 public:
+    // each rank is the row in the square board
+    // the integer expresses where in that row a queen is
+    std::string ranks;
+    const size_t board_size;
 
-    // impliments the path traced during the search
-    std::deque<Actions> traced_path;
-
-    virtual bool is_goal() const noexcept override {
-        return mazeNode::map[this->x][this->y] == 2;
+    void populate_diag(std::vector<std::vector<int>>& buffer,const int r,const int c) const noexcept {
+        for(int i = r+1, j = c+1 ; i < buffer.size() && j < buffer.size() ; i++ , j++){
+            buffer[i][j] += 1;
+        }
+        for(int i = r-1, j = c+1 ; i >= 0 && j < buffer.size() ; i-- , j++){
+            buffer[i][j] += 1;
+        }
+        for(int i = r-1, j = c-1 ; i >= 0 && j >= 0 ; i-- , j--){
+            buffer[i][j] += 1;
+        }
+        for(int i = r+1, j = c-1 ; i < buffer.size() && j >= 0 ; i++ , j--){
+            buffer[i][j] += 1;
+        }
+    }
+    void populate_hori(std::vector<std::vector<int>>& buffer,const int r,const int c) const noexcept {
+        for(int i = 0 ; i < buffer.size() ;i++){
+            if(i == r) continue;
+            buffer[i][c] += 1; 
+        }
+    }
+    void populate_vert(std::vector<std::vector<int>>& buffer,const int r,const int c) const noexcept {
+        for(int i = 0 ; i < buffer.size() ; i++){
+            if(i == c) continue;
+            buffer[r][i] += 1;
+        } 
     }
 
-    mazeNode(int _x = 0,int _y = 0,int _path_cost = 0,const std::deque<Actions>& previous = {},Actions actions_performed = Actions::nothing) 
-        : dtd::state(_path_cost) , x(_x) , y(_y) , traced_path(previous) {
-        this->traced_path.push_front(actions_performed);
-    }
-    ~mazeNode() override {
-        // do any stuff you want here (our states for this class are not on the heap)
+    Nqueens(size_t N) : board_size(N) , ranks(N,'0'){}
+    Nqueens(const std::string& ref) : board_size(ref.length()) , ranks(ref) {}
+    ~Nqueens() = default;
+
+    virtual void print() const noexcept override {
+        std::cout << "state: " << this->ranks << " cost: " << this->objective_function() << '\n';
     }
 
-    virtual void print_state() const noexcept override {
-        std::cout << "mazeNode := (x,y,g,h,f) = (" 
-            << this->x << "," 
-            << this->y << "," 
-            << this->path_cost << ","
-            << this->Heuristic() << ","
-            << this->evaluator()
-        << ")\n";
+
+    static dtd::local_node* get_radom_from_space(size_t board_size) noexcept{
+        static std::random_device _rnd{};
+        static std::mt19937 _engine{_rnd()};
+        std::uniform_int_distribution<int> _norm{0,(int)board_size-1};
+
+        Nqueens* rnd = new Nqueens(board_size);
+        for(unsigned int i = 0; i < board_size ; i++){
+            rnd->ranks[i] = '0' + _norm(_engine);
+        }
+
+        return rnd;
     }
 
-    std::vector<dtd::state*> expand() final override {
-        std::vector<dtd::state*> ans;
-        int dx,dy;
-        for(const auto& pair:mazeNode::transition_model){
-            dx = pair.second.first[0];
-            dy = pair.second.first[1];
-            if(is_valid(x+dx,y+dy) && !is_blocked(x+dx,y+dy)){
-                dtd::state* new_state = new mazeNode(x+dx,dy+y,this->path_cost+1,this->traced_path,pair.first);
-                ans.push_back(new_state);
+    // returns the number of attacked queens
+    virtual int objective_function() const noexcept override {
+        std::vector<std::vector<int>> board_buffer(board_size, std::vector<int>(board_size, 0));
+        // we draw the buffer attack map
+        for(int i = 0 ; i < ranks.length() ; i++){
+            int file = ranks[i] - '0';
+            populate_diag(board_buffer,i,file);
+            populate_hori(board_buffer,i,file);
+            populate_vert(board_buffer,i,file);
+            board_buffer[i][file] += 1;
+        }
+        // return the number of attacking queen for every queen
+        int cost = 0;
+        for(int i = 0; i < ranks.size() ; i++){
+            cost += board_buffer[i][ranks[i]-'0'];
+        }
+        return cost - board_size; // because we count a queen attacking itself
+    }
+    virtual std::vector<dtd::local_node*> get_successors() const noexcept override {
+        std::string cpy = this->ranks; // copy 
+        std::vector<dtd::local_node*> children;
+        for(int i = 0 ; i < this->ranks.length() ; i++){
+            if(cpy[i] < ('0'+board_size-1)){
+                cpy[i]++;
+                children.push_back(new Nqueens(cpy));
+                cpy[i]--;
+            }
+            if(cpy[i] > '0'){
+                cpy[i]--;
+                children.push_back(new Nqueens(cpy));
+                cpy[i]++;
             }
         }
-        return ans;
+        return children;
     }
-
-    virtual void trace_back_actions() noexcept override {
-        std::cout << "Tracedback actions: \n";
-        while(!this->traced_path.empty()){
-            Actions act = this->traced_path.back();
-
-            auto it = this->transition_model.find(act);
-            if(it != this->transition_model.end()){
-                std::cout << this->transition_model.at(act).second << ",";
-            }else{
-                // we reached the end "then we neet up the print" appended Actions::nothing 
-            }
-
-            this->traced_path.pop_back();
-        }
-        std::cout << "\nDone tracing back the actions.\n";
-    }
-
 };
 
 
 int main(void){
 
-    dtd::state* init = new mazeNode{};
-    dtd::state* result = dtd::GraphSearchAlgorithm<dtd::Strategy::LIFO>(init);
+    dtd::local_node* init = Nqueens::get_radom_from_space(4);
+ 
+    dtd::local_node* res = dtd::stochastic_hill_climbing_algorithm(init,[&](const std::vector<dtd::local_node*>& ref){
+        std::vector<float> distro(ref.size(),0.f);
+        std::vector<float> costs(ref.size());
+        float mx = 0.f;
+        for(int i = 0 ; i < ref.size() ; i++){
+            costs[i] = ref[i]->objective_function();
+            mx = std::max<float>(mx,costs[i]);
+        }
+        for(int i = 0; i < distro.size() ; i++){
+            distro[i] = (mx - costs[i]) + 1;
+        }
+        return distro;
+    });
 
-    result->trace_back_actions();
 
-    delete result;
+    // dtd::local_node* res = dtd::stochastic_beam_search<dtd::MinimizeObjectiveFunction,3>(init,[&](const std::vector<dtd::local_node*>& ref){
+    //     std::vector<float> distro(ref.size(),0.f);
+    //     std::vector<float> costs(ref.size());
+    //     float mx = 0.f;
+    //     for(int i = 0 ; i < ref.size() ; i++){
+    //         costs[i] = ref[i]->objective_function();
+    //         mx = std::max<float>(mx,costs[i]);
+    //     }
+    //     for(int i = 0; i < distro.size() ; i++){
+    //         distro[i] = (mx - costs[i]) + 1; // we shift all by one to avoid div by 0 error
+    //     }
+    //     return distro;
+    // });
+
+    // dtd::local_node* res = dtd::beam_search<dtd::MinimizeObjectiveFunction,3>(init);
+
+    // dtd::local_node* res = dtd::simulated_annealing<dtd::exponential_cooling>(init, 1000.0f,0.95f);
+
+    // dtd::local_node* res = dtd::first_choice_hill_climbing(init,[&](){
+    //     return Nqueens::get_radom_from_space(4);
+    // });
+
+    // std::vector<dtd::local_node*> start(5);
+    //
+    // for(size_t i = 0 ; i < 5 ; i++){
+    //     start[i] = Nqueens::get_radom_from_space(4);
+    // }
+    //
+    // dtd::local_node* res = dtd::random_restart_hill_climbing(start);
+
+
+
+    //
+    // dtd::local_node* res = dtd::hill_climbing_algorithm(init);
+ 
+
+    if(!res) return 1;
+
+    std::cout << "Gotten best: ";
+    res->print();
+
+
+    delete res;
 
     return 0;
 }

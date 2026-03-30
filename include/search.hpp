@@ -200,9 +200,9 @@ public:
 
 
 
-template <Strategy strat = Strategy::FIFO,typename cmp = dtd::PolymorphicLessThen>
+template <Strategy strat = Strategy::FIFO>
 dtd::state* TreeSearchAlgorithm(dtd::state* initial_state,int limit = 10000){
-    frontier<strat,cmp> front;
+    frontier<strat,dtd::PolymorphicLessThen> front;
     front.add(initial_state);
 
             unsigned int move_counter = 0;
@@ -246,16 +246,16 @@ defer:
     return ans;
 }
 
-template <Strategy strat = Strategy::FIFO,typename cmp = dtd::PolymorphicLessThen>
+template <Strategy strat = Strategy::FIFO>
 dtd::state* GraphSearchAlgorithm(dtd::state* initial_state,int limit = 10000){
-    frontier<strat,cmp> front;
+    frontier<strat,PolymorphicLessThen> front;
     front.add(initial_state);
 
             unsigned int move_counter = 0;
 
     dtd::state* ans = nullptr;
 
-    frontier<strat,cmp> explored_set;
+    frontier<strat,PolymorphicLessThen> explored_set;
 
     while(!front.empty() && limit > 0){
 
