@@ -73,7 +73,7 @@ dtd::local_node* hill_climbing_algorithm(dtd::local_node* initial_node,size_t li
 template <typename Behavior = dtd::MinimizeObjectiveFunction>
 dtd::local_node* stochastic_hill_climbing_algorithm(
     dtd::local_node* initial_node,
-    std::function<std::vector<float>(const std::vector<dtd::local_node*>)> get_weights,
+    std::function<std::vector<float>(const std::vector<dtd::local_node*>&)> get_weights,
     size_t limit = 100
 ){
     dtd::local_node* best_so_far = initial_node;
@@ -303,7 +303,7 @@ dtd::local_node* beam_search(dtd::local_node* initial_node,size_t limit = 50){
 template <typename Behavior = dtd::MinimizeObjectiveFunction,size_t BeamWidth>
 dtd::local_node* stochastic_beam_search(
         dtd::local_node* initial_node,
-        std::function<std::vector<float>(const std::vector<dtd::local_node*>)> get_weights,
+        std::function<std::vector<float>(const std::vector<dtd::local_node*>&)> get_weights,
         size_t limit = 50
     ){
     

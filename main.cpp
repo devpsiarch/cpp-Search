@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <iostream>
 #include <random>
 #include <string>
+#include "include/genetic_search.hpp"
 #include "include/local_search.hpp"
 
-class Nqueens : public dtd::local_node {
+class Nqueens : public dtd::genetic_state {
 public:
     // each rank is the row in the square board
     // the integer expresses where in that row a queen is
@@ -46,7 +48,7 @@ public:
     }
 
 
-    static dtd::local_node* get_radom_from_space(size_t board_size) noexcept{
+    static dtd::genetic_state* get_radom_from_space(size_t board_size) noexcept{
         static std::random_device _rnd{};
         static std::mt19937 _engine{_rnd()};
         std::uniform_int_distribution<int> _norm{0,(int)board_size-1};
@@ -94,71 +96,79 @@ public:
         }
         return children;
     }
-};
 
+    virtual void mutate(float probability = 0.5f) noexcept override {
+        static std::random_device _rnd{};
+        static std::mt19937 _engine{_rnd()};
+        std::uniform_real_distribution<float> _norm{0.0f,1.0f};
+        std::uniform_int_distribution<size_t> _dnorm;
+
+        // i choose this weird mutation behavior , experimentation and messing around 
+        // may lead to better empirical results
+        if(_norm(_engine) < probability){
+            for(size_t i = 0 ; i < this->ranks.size() ; i++){
+                int current_val = this->ranks[i] - '0';
+                int next_val = current_val + _dnorm(_engine);
+                
+                this->ranks[i] = '0' + (next_val % board_size);
+                this->ranks[i] = '0' + (((next_val % board_size) + board_size) % board_size);
+            }
+        }
+    }
+    virtual genetic_state* cross_over(genetic_state* other) const noexcept override {
+        static std::random_device _rnd{};
+        static std::mt19937 _engine{_rnd()};
+        std::uniform_int_distribution<size_t> _dnorm{0,this->ranks.size()};
+
+        auto son = new Nqueens(this->ranks.size());
+    
+        size_t cut_index = _dnorm(_engine);
+        auto father = dynamic_cast<Nqueens*>(other);
+
+        if(!father){
+            std::cout << "[UNEXPECTED]: GIVEN NON VALID POINTER TYPE IN CROSS OVER.\n";
+            exit(1);
+        }
+
+        for(size_t i = 0 ; i < cut_index ; i++){
+            son->ranks[i] = father->ranks[i];
+        }
+        for(size_t i = cut_index ; i < this->ranks.size() ; i++){
+            son->ranks[i] = this->ranks[i];
+        }
+
+        return son;
+    }
+};
 
 int main(void){
 
-    dtd::local_node* init = Nqueens::get_radom_from_space(4);
- 
-    dtd::local_node* res = dtd::stochastic_hill_climbing_algorithm(init,[&](const std::vector<dtd::local_node*>& ref){
-        std::vector<float> distro(ref.size(),0.f);
-        std::vector<float> costs(ref.size());
-        float mx = 0.f;
-        for(int i = 0 ; i < ref.size() ; i++){
-            costs[i] = ref[i]->objective_function();
-            mx = std::max<float>(mx,costs[i]);
-        }
-        for(int i = 0; i < distro.size() ; i++){
-            distro[i] = (mx - costs[i]) + 1;
-        }
-        return distro;
-    });
+    std::vector<dtd::genetic_state*> start(5);
 
+    for(size_t i = 0 ; i < 5 ; i++){
+        start[i] = Nqueens::get_radom_from_space(4);
+    }
 
-    // dtd::local_node* res = dtd::stochastic_beam_search<dtd::MinimizeObjectiveFunction,3>(init,[&](const std::vector<dtd::local_node*>& ref){
-    //     std::vector<float> distro(ref.size(),0.f);
-    //     std::vector<float> costs(ref.size());
-    //     float mx = 0.f;
-    //     for(int i = 0 ; i < ref.size() ; i++){
-    //         costs[i] = ref[i]->objective_function();
-    //         mx = std::max<float>(mx,costs[i]);
-    //     }
-    //     for(int i = 0; i < distro.size() ; i++){
-    //         distro[i] = (mx - costs[i]) + 1; // we shift all by one to avoid div by 0 error
-    //     }
-    //     return distro;
-    // });
+    dtd::local_node* res = dtd::simple_genetic_algorithm(start,
+                                                         0.5f,
+                                                         [&](const std::vector<dtd::genetic_state*>& ref){
+                                                            std::vector<int> distro(ref.size(),0.f);
+                                                            std::vector<int> costs(ref.size());
+                                                            int mx = 0;
+                                                            for(int i = 0 ; i < ref.size() ; i++){
+                                                                costs[i] = ref[i]->objective_function();
+                                                                mx = std::max(mx,costs[i]);
+                                                            }
+                                                            for(int i = 0; i < distro.size() ; i++){
+                                                                distro[i] = (mx - costs[i]) + 1; // we shift all by one to avoid div by 0 error
+                                                            }
+                                                            return distro;
+                                                         },
+                                                         [&](const std::vector<dtd::genetic_state*>& pop){
+                                                            return pop[0];
+                                                         });
 
-    // dtd::local_node* res = dtd::beam_search<dtd::MinimizeObjectiveFunction,3>(init);
-
-    // dtd::local_node* res = dtd::simulated_annealing<dtd::exponential_cooling>(init, 1000.0f,0.95f);
-
-    // dtd::local_node* res = dtd::first_choice_hill_climbing(init,[&](){
-    //     return Nqueens::get_radom_from_space(4);
-    // });
-
-    // std::vector<dtd::local_node*> start(5);
-    //
-    // for(size_t i = 0 ; i < 5 ; i++){
-    //     start[i] = Nqueens::get_radom_from_space(4);
-    // }
-    //
-    // dtd::local_node* res = dtd::random_restart_hill_climbing(start);
-
-
-
-    //
-    // dtd::local_node* res = dtd::hill_climbing_algorithm(init);
- 
-
-    if(!res) return 1;
-
-    std::cout << "Gotten best: ";
     res->print();
-
-
-    delete res;
 
     return 0;
 }
