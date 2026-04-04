@@ -6,6 +6,7 @@
 #include <vector>
 #include <iostream>
 #include <deque>
+#include <functional>
 
 namespace dtd {
 
@@ -163,6 +164,8 @@ public:
             delete killed;
         }
     }
+
+    const std::deque<dtd::state*>& get_data() const noexcept {return this->data;}
 };
 
 template <typename cmp>
@@ -195,10 +198,11 @@ public:
             delete killed;
         }
     }
-
 };
 
-
+// search algorithms
+//
+//
 
 template <Strategy strat = Strategy::FIFO>
 dtd::state* TreeSearchAlgorithm(dtd::state* initial_state,int limit = 10000){
@@ -296,6 +300,62 @@ dtd::state* GraphSearchAlgorithm(dtd::state* initial_state,int limit = 10000){
         move_counter++;
 
         limit--;
+    }
+
+defer:
+    return ans;
+}
+
+template <Strategy strat = Strategy::FIFO>
+dtd::state* GUIGraphSearchAlgorithm(
+    dtd::state* initial_state,
+    std::function<void(const frontier<strat,PolymorphicLessThen>&,const frontier<strat,PolymorphicLessThen>&,dtd::state*)> render_buffer,
+    int limit = 100){
+
+    frontier<strat,PolymorphicLessThen> front;
+    front.add(initial_state);
+
+            unsigned int move_counter = 0;
+
+    dtd::state* ans = nullptr;
+
+    frontier<strat,PolymorphicLessThen> explored_set;
+
+    while(!front.empty() && limit > 0){
+
+        dtd::state* current_state = front.get();
+ 
+        if(!current_state) std::cout << "[ERROR]: gotten nullptr from frontier\n";
+        if(current_state->is_goal()){
+            std::cout << "GOAL FOUND in [" << move_counter << "] moves.\n";
+            ans = current_state;
+            goto defer;
+        }
+
+        explored_set.add(current_state);
+
+        render_buffer(front,explored_set,current_state);
+
+        std::vector<dtd::state*> expanded_nodes = current_state->expand();
+
+        std::cout << "We expanded these now:\n";
+        dtd::state::print_states(expanded_nodes);
+        std::cout << "result is done.\n";
+
+
+
+        for(unsigned int i = 0 ; i < expanded_nodes.size() ; i++){
+            if(expanded_nodes[i] && !front.contains(expanded_nodes[i]) && !explored_set.contains(expanded_nodes[i])) 
+                front.add(expanded_nodes[i]);
+            else{
+                delete expanded_nodes[i];
+            }
+        }
+        
+        move_counter++;
+
+        limit--;
+
     }
 
 defer:

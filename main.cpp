@@ -1,174 +1,284 @@
-#include <algorithm>
-#include <iostream>
-#include <random>
-#include <string>
-#include "include/genetic_search.hpp"
-#include "include/local_search.hpp"
+#include <chrono>
+#include <cmath>
+#include <thread>
+#include <vector>
+#include "include/search.hpp"
+#include <unordered_map>
+#include <raylib.h>
 
-class Nqueens : public dtd::genetic_state {
+class mazeNode : public dtd::state{
 public:
-    // each rank is the row in the square board
-    // the integer expresses where in that row a queen is
-    std::string ranks;
-    const size_t board_size;
+    // the state the user choose to impliment
+    int x;
+    int y;
 
-    void populate_diag(std::vector<std::vector<int>>& buffer,const int r,const int c) const noexcept {
-        for(int i = r+1, j = c+1 ; i < buffer.size() && j < buffer.size() ; i++ , j++){
-            buffer[i][j] += 1;
-        }
-        for(int i = r-1, j = c+1 ; i >= 0 && j < buffer.size() ; i-- , j++){
-            buffer[i][j] += 1;
-        }
-        for(int i = r-1, j = c-1 ; i >= 0 && j >= 0 ; i-- , j--){
-            buffer[i][j] += 1;
-        }
-        for(int i = r+1, j = c-1 ; i < buffer.size() && j >= 0 ; i++ , j--){
-            buffer[i][j] += 1;
-        }
-    }
-    void populate_hori(std::vector<std::vector<int>>& buffer,const int r,const int c) const noexcept {
-        for(int i = 0 ; i < buffer.size() ;i++){
-            if(i == r) continue;
-            buffer[i][c] += 1; 
-        }
-    }
-    void populate_vert(std::vector<std::vector<int>>& buffer,const int r,const int c) const noexcept {
-        for(int i = 0 ; i < buffer.size() ; i++){
-            if(i == c) continue;
-            buffer[r][i] += 1;
-        } 
-    }
-
-    Nqueens(size_t N) : board_size(N) , ranks(N,'0'){}
-    Nqueens(const std::string& ref) : board_size(ref.length()) , ranks(ref) {}
-    ~Nqueens() = default;
-
-    virtual void print() const noexcept override {
-        std::cout << "state: " << this->ranks << " cost: " << this->objective_function() << '\n';
-    }
+private:
+    // the user has to define a enum of a actions that can be done
+    enum Actions {
+        down,
+        up,
+        right,
+        left,
+        nothing
+    };
 
 
-    static dtd::genetic_state* get_radom_from_space(size_t board_size) noexcept{
-        static std::random_device _rnd{};
-        static std::mt19937 _engine{_rnd()};
-        std::uniform_int_distribution<int> _norm{0,(int)board_size-1};
-
-        Nqueens* rnd = new Nqueens(board_size);
-        for(unsigned int i = 0; i < board_size ; i++){
-            rnd->ranks[i] = '0' + _norm(_engine);
-        }
-
-        return rnd;
-    }
-
-    // returns the number of attacked queens
-    virtual int objective_function() const noexcept override {
-        std::vector<std::vector<int>> board_buffer(board_size, std::vector<int>(board_size, 0));
-        // we draw the buffer attack map
-        for(int i = 0 ; i < ranks.length() ; i++){
-            int file = ranks[i] - '0';
-            populate_diag(board_buffer,i,file);
-            populate_hori(board_buffer,i,file);
-            populate_vert(board_buffer,i,file);
-            board_buffer[i][file] += 1;
-        }
-        // return the number of attacking queen for every queen
-        int cost = 0;
-        for(int i = 0; i < ranks.size() ; i++){
-            cost += board_buffer[i][ranks[i]-'0'];
-        }
-        return cost - board_size; // because we count a queen attacking itself
-    }
-    virtual std::vector<dtd::local_node*> get_successors() const noexcept override {
-        std::string cpy = this->ranks; // copy 
-        std::vector<dtd::local_node*> children;
-        for(int i = 0 ; i < this->ranks.length() ; i++){
-            if(cpy[i] < ('0'+board_size-1)){
-                cpy[i]++;
-                children.push_back(new Nqueens(cpy));
-                cpy[i]--;
-            }
-            if(cpy[i] > '0'){
-                cpy[i]--;
-                children.push_back(new Nqueens(cpy));
-                cpy[i]++;
-            }
-        }
-        return children;
-    }
-
-    virtual void mutate(float probability = 0.5f) noexcept override {
-        static std::random_device _rnd{};
-        static std::mt19937 _engine{_rnd()};
-        std::uniform_real_distribution<float> _norm{0.0f,1.0f};
-        std::uniform_int_distribution<size_t> _dnorm;
-
-        // i choose this weird mutation behavior , experimentation and messing around 
-        // may lead to better empirical results
-        if(_norm(_engine) < probability){
-            for(size_t i = 0 ; i < this->ranks.size() ; i++){
-                int current_val = this->ranks[i] - '0';
-                int next_val = current_val + _dnorm(_engine);
-                
-                this->ranks[i] = '0' + (next_val % board_size);
-                this->ranks[i] = '0' + (((next_val % board_size) + board_size) % board_size);
-            }
-        }
-    }
-    virtual genetic_state* cross_over(genetic_state* other) const noexcept override {
-        static std::random_device _rnd{};
-        static std::mt19937 _engine{_rnd()};
-        std::uniform_int_distribution<size_t> _dnorm{0,this->ranks.size()};
-
-        auto son = new Nqueens(this->ranks.size());
+    using TransitionModel = const std::unordered_map<Actions,std::pair<std::vector<int>,const char*>>;
     
-        size_t cut_index = _dnorm(_engine);
-        auto father = dynamic_cast<Nqueens*>(other);
+    inline static TransitionModel transition_model{
+        {Actions::down,  {{1, 0}  ,"down"}},
+        {Actions::up,    {{-1, 0} ,"up"}},
+        {Actions::left,  {{0, -1} ,"left"}},
+        {Actions::right, {{0,  1} ,"right"}}
+    };
 
-        if(!father){
-            std::cout << "[UNEXPECTED]: GIVEN NON VALID POINTER TYPE IN CROSS OVER.\n";
-            exit(1);
-        }
+public:
+    // the maze itself
+    inline static const std::vector<std::vector<int>> map{
+        {-2, 0 , 0 , 0 , 0, 0},
+        {0 , 0 , 0 , 1 , 1, 0},
+        {0 , 0 , 1 , 1 , 1, 0},
+        {1 , 0 , 0 , 0 , 2, 0},
+        {1 , 1 , 1 , 1 , 1, 1}
+    };
+    
+    // and the goal position (optional depending on the criterion)
+    inline static const std::vector<int> goal_position{3,4};
 
-        for(size_t i = 0 ; i < cut_index ; i++){
-            son->ranks[i] = father->ranks[i];
-        }
-        for(size_t i = cut_index ; i < this->ranks.size() ; i++){
-            son->ranks[i] = this->ranks[i];
-        }
-
-        return son;
+    bool is_valid(int nx,int ny)const noexcept{
+        if(nx >= (int)map.size() || nx < 0) return false;
+        if(ny >= (int)map[0].size() || ny < 0) return false;
+        return true;
     }
+
+    bool is_blocked(int nx,int ny) const noexcept {
+        return map[nx][ny] == 1;
+    }
+
+protected:
+    virtual size_t generateHash() const override final{
+        return std::hash<int>{}(this->x) + std::hash<int>{}(this->y);
+    }
+    virtual bool isEqualTo(const dtd::state* other) const override final{
+        std::cout << other << " " << this << '\n';
+        if(other == nullptr) return false;
+        const mazeNode* rhs = dynamic_cast<const mazeNode*>(other);
+        std::cout << "after rhs casting: " << rhs << '\n';
+        if(!rhs) return false;
+        if(rhs->x != this->x || rhs->y != this->y) return false;
+        return true;
+    }
+    virtual bool isLessThen(const dtd::state* other) const override final {
+        if(!other) return false;
+        const mazeNode* rhs = dynamic_cast<const mazeNode*>(other);
+        if(!rhs) return false;
+        // SWO
+        if (this->x != rhs->x) {
+            return this->x < rhs->x;
+        }
+        return this->y < rhs->y;
+    }
+
+
+    // for example we can override the Heuristic methode and define it
+    virtual int Heuristic() const noexcept override {
+        const float dx = (this->x - mazeNode::goal_position[0]);
+        const float dy = (this->y - mazeNode::goal_position[1]);
+
+        return static_cast<int>(std::sqrt(dx*dx+dy*dy));
+    }
+
+        
+public:
+
+    // impliments the path traced during the search
+    std::deque<Actions> traced_path;
+
+    virtual bool is_goal() const noexcept override {
+        return mazeNode::map[this->x][this->y] == 2;
+    }
+
+    mazeNode(int _x = 0,int _y = 0,int _path_cost = 0,const std::deque<Actions>& previous = {},Actions actions_performed = Actions::nothing) 
+        : dtd::state(_path_cost) , x(_x) , y(_y) , traced_path(previous) {
+        this->traced_path.push_front(actions_performed);
+    }
+    ~mazeNode() override {
+        // do any stuff you want here (our states for this class are not on the heap)
+    }
+
+    virtual void print_state() const noexcept override {
+        std::cout << "mazeNode := (x,y,g,h,f) = (" 
+            << this->x << "," 
+            << this->y << "," 
+            << this->path_cost << ","
+            << this->Heuristic() << ","
+            << this->evaluator()
+        << ")\n";
+    }
+
+    std::vector<dtd::state*> expand() final override {
+        std::vector<dtd::state*> ans;
+        int dx,dy;
+        for(const auto& pair:mazeNode::transition_model){
+            dx = pair.second.first[0];
+            dy = pair.second.first[1];
+            if(is_valid(x+dx,y+dy) && !is_blocked(x+dx,y+dy)){
+                dtd::state* new_state = new mazeNode(x+dx,dy+y,this->path_cost+1,this->traced_path,pair.first);
+                ans.push_back(new_state);
+            }
+        }
+        return ans;
+    }
+
+    virtual void trace_back_actions() noexcept override {
+        std::cout << "Tracedback actions: \n";
+        while(!this->traced_path.empty()){
+            Actions act = this->traced_path.back();
+
+            auto it = this->transition_model.find(act);
+            if(it != this->transition_model.end()){
+                std::cout << this->transition_model.at(act).second << ",";
+            }else{
+                // we reached the end "then we neet up the print" appended Actions::nothing 
+            }
+
+            this->traced_path.pop_back();
+        }
+        std::cout << "\nDone tracing back the actions.\n";
+    }
+
 };
 
-int main(void){
 
-    std::vector<dtd::genetic_state*> start(5);
+struct visulizer {
+    int width;
+    int height;
 
-    for(size_t i = 0 ; i < 5 ; i++){
-        start[i] = Nqueens::get_radom_from_space(4);
+    int cell_size;
+
+    enum cell_type {
+        NOT,
+        EXPLORED,
+        CURRENT,
+        IN_FRONTIER,
+        GOAL,
+        BLOCK,
+    };
+
+    std::vector<std::vector<cell_type>> cell_buffer;
+
+    visulizer(int rows,int cols,int cell_,int fps,const char* name) 
+        : width(rows*cell_) ,
+        height(cols*cell_),
+        cell_size(cell_) ,
+        cell_buffer(width/cell_size,std::vector<cell_type>(height/cell_size,cell_type::NOT)){
+        InitWindow(width, height, name);
+        SetTargetFPS(fps);
+    }
+    ~visulizer(){
+        CloseWindow();
     }
 
-    dtd::local_node* res = dtd::simple_genetic_algorithm(start,
-                                                         0.5f,
-                                                         [&](const std::vector<dtd::genetic_state*>& ref){
-                                                            std::vector<int> distro(ref.size(),0.f);
-                                                            std::vector<int> costs(ref.size());
-                                                            int mx = 0;
-                                                            for(int i = 0 ; i < ref.size() ; i++){
-                                                                costs[i] = ref[i]->objective_function();
-                                                                mx = std::max(mx,costs[i]);
-                                                            }
-                                                            for(int i = 0; i < distro.size() ; i++){
-                                                                distro[i] = (mx - costs[i]) + 1; // we shift all by one to avoid div by 0 error
-                                                            }
-                                                            return distro;
-                                                         },
-                                                         [&](const std::vector<dtd::genetic_state*>& pop){
-                                                            return pop[0];
-                                                         });
 
-    res->print();
+
+};
+
+
+enum cell_type {
+    NOT = 0,
+    BLOCK = 1,
+    GOAL = 2,
+    EXPLORED,
+    CURRENT,
+    IN_FRONTIER,
+};
+
+
+
+// Initialize an empty buffer with the correct dimensions
+static std::vector<std::vector<cell_type>> cell_buffer(
+    mazeNode::map.size(), 
+    std::vector<cell_type>(mazeNode::map[0].size())
+);
+
+
+static constexpr int cell_size = 50;
+
+void render_cell_buffer() noexcept {
+    for(unsigned int i = 0 ; i < cell_buffer.size() ; i++){
+        for(unsigned int j = 0 ; j < cell_buffer[0].size() ; j++){
+            Color selected_color;
+            switch (cell_buffer[i][j]) {
+                case cell_type::NOT:
+                    selected_color = GRAY;
+                    break;
+                case cell_type::EXPLORED:
+                    selected_color = GREEN;
+                    break;
+                case cell_type::CURRENT:
+                    selected_color = BLUE;
+                    break;
+                case cell_type::IN_FRONTIER:
+                    selected_color = RED;
+                    break;
+                case cell_type::BLOCK:
+                    selected_color = BLACK;
+                    break;
+                case cell_type::GOAL:
+                    selected_color = YELLOW;
+                    break;
+            }
+            DrawRectangle(i*cell_size, j*cell_size, cell_size-2, cell_size-2,selected_color);
+        }
+    }
+}
+
+int main(void){
+    for(size_t i = 0; i < mazeNode::map.size(); ++i) {
+        for (size_t j = 0; j < mazeNode::map[i].size(); ++j) {
+            cell_buffer[i][j] = static_cast<cell_type>(mazeNode::map[i][j]);
+        }
+    }
+
+    InitWindow(cell_size*cell_buffer.size(), cell_size*cell_buffer[0].size(),"Simple maze");
+    SetTargetFPS(60);
+    
+    while(!WindowShouldClose()){
+
+
+        dtd::state* init = new mazeNode{};
+        auto res = dtd::GUIGraphSearchAlgorithm<dtd::Strategy::FIFO>(init, [&](const auto& front,const auto& expl,dtd::state* current_s){
+            for(const dtd::state*node:front.get_data()){
+                if(!node) exit(1);
+                auto ptr = dynamic_cast<const mazeNode*>(node);
+                if(!ptr) exit(1);
+
+                cell_buffer[ptr->x][ptr->y] = cell_type::IN_FRONTIER;
+            }
+            for(const dtd::state*node:expl.get_data()){
+                if(!node) exit(1);
+                auto ptr = dynamic_cast<const mazeNode*>(node);
+                if(!ptr) exit(1);
+
+                cell_buffer[ptr->x][ptr->y] = cell_type::EXPLORED;
+            }
+            if(!current_s) exit(1);
+            auto ptr = dynamic_cast<const mazeNode*>(current_s);
+            if(!ptr) exit(1);       
+
+            cell_buffer[ptr->x][ptr->y] = cell_type::CURRENT;
+
+            BeginDrawing();
+                render_cell_buffer();
+            EndDrawing();
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if(WindowShouldClose()) exit(0);
+        });
+
+        delete res;
+        break;
+    }
+
 
     return 0;
 }

@@ -24,19 +24,30 @@ int main(int argc,char** argv){
                     FILE_TO_BUILD,"-o",SOLUTION_BIN
                     );
 
+    // raylib visualization version
+    OUROC(ray,SOLUTION_BIN,FILE_TO_BUILD,__FILE__,
+          "include/search.hpp",
+          "include/local_search.hpp",
+          "genetic_search.hpp"
+        );
+    OUROC_BUILD_CMD(&ray,"g++",
+                    "-Wall -Wextra",
+                    "-fsanitize=address",
+                    "-g",
+                    "-I./raylib-5.5_linux_amd64/include/",
+                    FILE_TO_BUILD,"-o",SOLUTION_BIN,
+                    "-L./raylib-5.5_linux_amd64/lib/",
+                    "-l:libraylib.a",
+                    "-lm"
+                    );
 
-    OUROC(run,NULL,SOLUTION_BIN);
-    OUROC_BUILD_CMD(&run,"./"SOLUTION_BIN);
 
     if(!strcmp(argv[1],"main")) 
         ouroc_run_cmd(&main);
-    else if(!strcmp(argv[1],"run"))
-        ouroc_run_cmd(&run);
+    
+    else if(!strcmp(argv[1],"ray"))
+        ouroc_run_cmd(&ray);
 
-    else if(!strcmp(argv[1],"all")) {
-        ouroc_run_cmd(&main);
-        ouroc_run_cmd(&run);
-    }
     else{
         printf("build.c :: you havnt defined said instruction.\n");
         exit(1);
@@ -44,6 +55,6 @@ int main(int argc,char** argv){
 
 
     OUROC_KILL(&main);
-    OUROC_KILL(&run);
+    OUROC_KILL(&ray);
     return 0;
 }
