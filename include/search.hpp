@@ -310,7 +310,7 @@ template <Strategy strat = Strategy::FIFO>
 dtd::state* GUIGraphSearchAlgorithm(
     dtd::state* initial_state,
     std::function<void(const frontier<strat,PolymorphicLessThen>&,const frontier<strat,PolymorphicLessThen>&,dtd::state*)> render_buffer,
-    int limit = 100){
+    int limit = 1000){
 
     frontier<strat,PolymorphicLessThen> front;
     front.add(initial_state);

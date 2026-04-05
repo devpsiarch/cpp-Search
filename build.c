@@ -13,9 +13,10 @@ int main(int argc,char** argv){
 
     // normal version
     OUROC(main,SOLUTION_BIN,FILE_TO_BUILD,__FILE__,
-          "include/search.hpp",
-          "include/local_search.hpp",
-          "genetic_search.hpp"
+          "./include/search.hpp",
+          "./include/local_search.hpp",
+          "./include/genetic_search.hpp",
+          "./include/adversarial_search.hpp"
         );
     OUROC_BUILD_CMD(&main,"g++",
                     "-Wall -Wextra",
