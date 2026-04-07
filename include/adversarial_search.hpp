@@ -50,6 +50,7 @@ double minimax_search(dtd::adversarial_node* init,unsigned int depth){
                 max_eval = std::max(max_eval,eval);
             }
             node_eval = max_eval;
+            break;
         }
         case dtd::adversarial_node::Behavior::MIN:{
             double min_eval = std::numeric_limits<double>::infinity();
@@ -58,6 +59,7 @@ double minimax_search(dtd::adversarial_node* init,unsigned int depth){
                 min_eval = std::min(min_eval,eval);
             }
             node_eval = min_eval;
+            break;
         }
     }
 
@@ -74,14 +76,30 @@ dtd::adversarial_node* minimax_decision(dtd::adversarial_node* init,unsigned int
     if(adv_nodes.size() == 0)
         return best_move;
     
-    double best_eval = -std::numeric_limits<double>::infinity();
+    switch(init->behavior){
+        case dtd::adversarial_node::Behavior::MAX:{
+            double best_eval = -std::numeric_limits<double>::infinity();
+            for(size_t i = 0 ; i < adv_nodes.size() ; i++){
+                double move_eval = minimax_search(adv_nodes[i], depth);
 
-    for(size_t i = 0 ; i < adv_nodes.size(); i++){
-        double move_eval = minimax_search(adv_nodes[i], depth);
+                if(move_eval > best_eval){
+                    best_eval = move_eval;
+                    best_move = adv_nodes[i];
+                }
+            }
+            break;
+        }
+        case dtd::adversarial_node::Behavior::MIN:{
+            double best_eval = std::numeric_limits<double>::infinity();
+            for(size_t i = 0 ; i < adv_nodes.size() ; i++){
+                double move_eval = minimax_search(adv_nodes[i], depth);
 
-        if(move_eval > best_eval){
-            best_eval = move_eval;
-            best_move = adv_nodes[i];
+                if(move_eval < best_eval){
+                    best_eval = move_eval;
+                    best_move = adv_nodes[i];
+                }
+            }
+            break;
         }
     }
 
@@ -149,22 +167,45 @@ dtd::adversarial_node* alpha_beta_decision(dtd::adversarial_node* init,unsigned 
     if(adv_nodes.size() == 0)
         return best_move;
     
-    double best_eval = -std::numeric_limits<double>::infinity();
+    switch(init->behavior){
+        case dtd::adversarial_node::Behavior::MAX:{
+            double best_eval = -std::numeric_limits<double>::infinity();
+            for(size_t i = 0 ; i < adv_nodes.size() ; i++){
+                double move_eval = alpha_beta_search(adv_nodes[i],
+                                                     depth,
+                                                     -std::numeric_limits<double>::infinity(),
+                                                     std::numeric_limits<double>::infinity()
+                                                     );
 
-    for(size_t i = 0 ; i < adv_nodes.size(); i++){
-        double move_eval = alpha_beta_search(
-            adv_nodes[i],depth,-std::numeric_limits<double>::infinity(),std::numeric_limits<double>::infinity()
-        );
+                if(move_eval > best_eval){
+                    best_eval = move_eval;
+                    best_move = adv_nodes[i];
+                }
+            }
+            break;
+        }
+        case dtd::adversarial_node::Behavior::MIN:{
+            double best_eval = std::numeric_limits<double>::infinity();
+            for(size_t i = 0 ; i < adv_nodes.size() ; i++){
+                double move_eval = alpha_beta_search(adv_nodes[i],
+                                                     depth,
+                                                     -std::numeric_limits<double>::infinity(),
+                                                     std::numeric_limits<double>::infinity()
+                                                     );
 
-        if(move_eval > best_eval){
-            best_eval = move_eval;
-            best_move = adv_nodes[i];
+                if(move_eval < best_eval){
+                    best_eval = move_eval;
+                    best_move = adv_nodes[i];
+                }
+            }
+            break;
         }
     }
 
 defer:
     for(auto ptr:adv_nodes)
         if(ptr != best_move) delete ptr;
+
     return best_move;
 }
 

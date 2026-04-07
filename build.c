@@ -16,7 +16,8 @@ int main(int argc,char** argv){
           "./include/search.hpp",
           "./include/local_search.hpp",
           "./include/genetic_search.hpp",
-          "./include/adversarial_search.hpp"
+          "./include/adversarial_search.hpp",
+          "./include/sa_search.hpp"
         );
     OUROC_BUILD_CMD(&main,"g++",
                     "-Wall -Wextra",

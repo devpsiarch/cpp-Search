@@ -1,151 +1,142 @@
-#include "include/adversarial_search.hpp"
+#include "./include/sa_search.hpp"
 #include <iostream>
 
-class tictactoe : public dtd::adversarial_node {
+class test_node : public dtd::sa_node {
 public:
-    enum Word {
-        X = 0,
-        O = 1,
-        NONE = 2
+
+    enum action {
+        a1,a2,
+        b1,b2,
+        nada
     };
 
-    std::vector<Word> board;
-    Word player;
+    inline static const int takes = 3;
 
-    tictactoe() : board(9,Word::NONE) , player(Word::X) {}
+    int current_money;
+    int current_turns;
 
+    action act_taken;
 
-    void make_play(int r,int c,Word op) {
-        board[r*3+c] = op;
-        player = op == Word::X ? Word::O : Word::X;
-    }
-
-    // how far away are we from winning - how far are we from loosing
-    virtual double evaluate() const noexcept override {
-        // Checking for Rows for X or O victory.
-        for (int row = 0; row < 3; row++)
-        {
-            if (board[row * 3 + 0] == board[row * 3 + 1] && board[row * 3 + 1] == board[row * 3 + 2])
-            {
-                if (board[row * 3 + 0] == Word::X)
-                   return +10;
-                else if (board[row * 3 + 0] == Word::O)
-                   return -10;
-            }
-        }
-
-        // Checking for Columns for X or O victory.
-        for (int col = 0; col < 3; col++)
-        {
-            if (board[0 * 3 + col] == board[1 * 3 + col] && board[1 * 3 + col] == board[2 * 3 + col])
-            {
-                if (board[0 * 3 + col] == Word::X)
-                    return +10;
-                else if (board[0 * 3 + col] == Word::O)
-                    return -10;
-            }
-        }
-
-        // Checking for Diagonals for X or O victory.
-        // Main diagonal (top-left to bottom-right): indices 0, 4, 8
-        if (board[0] == board[4] && board[4] == board[8])
-        {
-            if (board[0] == Word::X)
-                return +10;
-            else if (board[0] == Word::O)
-                return -10;
-        }
-        
-        // Anti-diagonal (top-right to bottom-left): indices 2, 4, 6
-        if (board[2] == board[4] && board[4] == board[6])
-        {
-            if (board[2] == Word::X)
-                return +10;
-            else if (board[2] == Word::O)
-                return -10;
-        }
-        // Else if none of them have won then return 0
-        return 0;
-    }
+    test_node(int cm,int ct,Behavior b,action act = action::nada,Behavior p = Behavior::LUCK) 
+        : dtd::sa_node(b) , current_money(cm) , current_turns(ct) , act_taken(act){}
+    
+    virtual double evaluate() const noexcept override {return current_money;}
     virtual bool terminal_test() const noexcept override {
-        if(evaluate() == 0) return false;
-        return true;
+        // win
+        if(current_turns == takes && current_money > 0) return true;
+        // lost
+        return current_money == 0;
     }
-    virtual std::vector<dtd::adversarial_node*> generate_successors() const noexcept override {
-        std::vector<dtd::adversarial_node*> next_states;
-
-        for(int i = 0 ;  i < 3 ; i ++){
-            for(int j = 0 ; j < 3 ; j++){
-                if(board[i*3+j] == Word::NONE){
-                    tictactoe* next = new tictactoe(*this);
-                    next->make_play(i,j,this->player);
-                    next_states.push_back(next);
-                }
-            }
+    
+    virtual std::vector<std::pair<dtd::sa_node*,double>> expand_luck_outcome() const noexcept override {
+        if(this->behavior != Behavior::LUCK){
+            std::cerr << "trying to luck expand non luck nodes , invalid.\n";
+            exit(0);
         }
+        std::vector<std::pair<dtd::sa_node*,double>> res;
+        
+        Behavior next_behavior;
+        if(this->act_taken == action::a1 || this->act_taken == action::a2) next_behavior = Behavior::MIN;
+        else next_behavior = Behavior::MAX;
 
-        return next_states;
+        switch (this->act_taken) {
+            case action::a1:{
+                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money+2,current_turns+1,next_behavior),0.75f};
+                std::pair<dtd::sa_node*,double> p2 = {new test_node(current_money-3,current_turns+1,next_behavior),0.25f};
+                res.emplace_back(p1);
+                res.emplace_back(p2);
+                break;
+            }
+            case action::a2:{
+                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money+8,current_turns+1,next_behavior),0.125f};
+                std::pair<dtd::sa_node*,double> p2 = {new test_node(current_money-6,current_turns+1,next_behavior),0.875};
+                res.emplace_back(p1);
+                res.emplace_back(p2);
+                break;
+            }
+            case action::b1:{
+                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money+1,current_turns+1,next_behavior),0.333f};
+                std::pair<dtd::sa_node*,double> p2 = {new test_node(current_money-6,current_turns+1,next_behavior),0.667};
+                res.emplace_back(p1);
+                res.emplace_back(p2);
+                break;
+            }
+            case action::b2:{
+                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money,current_turns+1,next_behavior),1.0f};
+                res.emplace_back(p1);
+                break;
+            }
+            default:
+                std::cerr << "trying to luck expand non luck nodes (nada) , invalid.\n";
+                exit(0);
+                break;
+        }
+        return res;
+    }
+    virtual std::vector<dtd::sa_node*> generate_successors() const noexcept override {
+        std::vector<sa_node*> ans;
+        switch (this->behavior) {
+            case Behavior::MAX:{
+                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::a1));
+                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::a2));
+                break;
+            }
+            case Behavior::MIN:{
+                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::b1));
+                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::b2));
+                break;
+            }
+            default:
+                std::cerr << "trying to expand luck nodes ... invalid , should use expand_luck_outcome.\n";
+                exit(0);
+                break;
+        }
+        return ans;
     }
 
-    virtual void print() const noexcept override {
-         for(int i = 0 ;  i < 3 ; i ++){
-            for(int j = 0 ; j < 3 ; j++){
-                switch (board[i*3+j]){
-                    case Word::X:
-                        std::cout << "X";
-                        break;
-                    case Word::O:
-                        std::cout << "O";
-                        break;
-                    case Word::NONE:
-                        std::cout << " ";
-                        break;
-                }
-                std::cout << '|';
-            }
-            std::cout << "\n";
-        }       
+    void print() const noexcept override {
+        // 1. Convert the inherited Behavior enum to a string
+        std::string type_str = (behavior == MAX) ? "MAX" : (behavior == MIN ? "MIN" : "LUCK");
+
+        // 2. Print all the data
+        std::cout << "[Behavior: " << type_str 
+                  << " | Turns Left: " << current_turns 
+                  << " | Money: $" << current_money 
+                  << " | Last Action: " << action_to_string(act_taken) 
+                  << "]\n";
+    }
+private:
+std::string action_to_string(action a) const noexcept {
+        switch (a) {
+            case a1:   return "a1";
+            case a2:   return "a2";
+            case b1:   return "b1";
+            case b2:   return "b2";
+            case nada: return "nada";
+            default:   return "unknown";
+        }
     }
 };
 
-int main(){
+int main() {
 
-    dtd::adversarial_node* init = new tictactoe();
-
-    auto res = dtd::minimax_decision(init);
-
-    while(!init->terminal_test()){
-        auto next = dtd::minimax_decision(init,10);
-
-        delete init;
-        init = next;
-
-        if(init->terminal_test()){
-            std::cout << "AI won!\n";
-            break;
-        }
-
-        init->print();
-
-        int r,c;
-        std::cin >> r >> c;
-
-        auto ptr = dynamic_cast<tictactoe*>(init);
-
-        ptr->make_play(r,c,ptr->player);
-
-
-        if(init->terminal_test()){
-            std::cout << "Human won!\n";
-            break;
-        }
-
-
-    }
-
+    dtd::sa_node* init = new test_node(3,0,dtd::sa_node::Behavior::MAX);
+    
     init->print();
 
-    delete init;
+    auto res = dtd::sa_minimax_decision(init, 10);
+    auto res_v = dtd::sa_minimax_search(init, 10);
 
+
+    std::cout << "--------------------\n"; 
+
+    res->print();
+    std::cout << "best eval is: "<< res_v << '\n';
+
+
+    delete init;
+    delete res;
+
+defer:
     return 0;
 }
