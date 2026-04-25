@@ -1,142 +1,82 @@
-#include "./include/sa_search.hpp"
 #include <iostream>
+#include "./include/csp.hpp"
 
-class test_node : public dtd::sa_node {
-public:
-
-    enum action {
-        a1,a2,
-        b1,b2,
-        nada
-    };
-
-    inline static const int takes = 3;
-
-    int current_money;
-    int current_turns;
-
-    action act_taken;
-
-    test_node(int cm,int ct,Behavior b,action act = action::nada,Behavior p = Behavior::LUCK) 
-        : dtd::sa_node(b) , current_money(cm) , current_turns(ct) , act_taken(act){}
-    
-    virtual double evaluate() const noexcept override {return current_money;}
-    virtual bool terminal_test() const noexcept override {
-        // win
-        if(current_turns == takes && current_money > 0) return true;
-        // lost
-        return current_money == 0;
+template <typename T>
+struct diff : public dtd::Constraint<T> {
+    virtual bool is_satisfied(const dtd::Assignment<T>& values) const noexcept override {
+        if(values.find(this->x1) == values.end() || values.find(this->x2) == values.end()) return true;
+        return values.at(this->x1) != values.at(this->x2);
     }
-    
-    virtual std::vector<std::pair<dtd::sa_node*,double>> expand_luck_outcome() const noexcept override {
-        if(this->behavior != Behavior::LUCK){
-            std::cerr << "trying to luck expand non luck nodes , invalid.\n";
-            exit(0);
-        }
-        std::vector<std::pair<dtd::sa_node*,double>> res;
-        
-        Behavior next_behavior;
-        if(this->act_taken == action::a1 || this->act_taken == action::a2) next_behavior = Behavior::MIN;
-        else next_behavior = Behavior::MAX;
-
-        switch (this->act_taken) {
-            case action::a1:{
-                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money+2,current_turns+1,next_behavior),0.75f};
-                std::pair<dtd::sa_node*,double> p2 = {new test_node(current_money-3,current_turns+1,next_behavior),0.25f};
-                res.emplace_back(p1);
-                res.emplace_back(p2);
-                break;
-            }
-            case action::a2:{
-                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money+8,current_turns+1,next_behavior),0.125f};
-                std::pair<dtd::sa_node*,double> p2 = {new test_node(current_money-6,current_turns+1,next_behavior),0.875};
-                res.emplace_back(p1);
-                res.emplace_back(p2);
-                break;
-            }
-            case action::b1:{
-                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money+1,current_turns+1,next_behavior),0.333f};
-                std::pair<dtd::sa_node*,double> p2 = {new test_node(current_money-6,current_turns+1,next_behavior),0.667};
-                res.emplace_back(p1);
-                res.emplace_back(p2);
-                break;
-            }
-            case action::b2:{
-                std::pair<dtd::sa_node*,double> p1 = {new test_node(current_money,current_turns+1,next_behavior),1.0f};
-                res.emplace_back(p1);
-                break;
-            }
-            default:
-                std::cerr << "trying to luck expand non luck nodes (nada) , invalid.\n";
-                exit(0);
-                break;
-        }
-        return res;
+    virtual bool is_satisfied(T xi,T xj) const noexcept override {
+        return xi != xj;
     }
-    virtual std::vector<dtd::sa_node*> generate_successors() const noexcept override {
-        std::vector<sa_node*> ans;
-        switch (this->behavior) {
-            case Behavior::MAX:{
-                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::a1));
-                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::a2));
-                break;
-            }
-            case Behavior::MIN:{
-                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::b1));
-                ans.push_back(new test_node(current_money,current_turns,dtd::sa_node::Behavior::LUCK,action::b2));
-                break;
-            }
-            default:
-                std::cerr << "trying to expand luck nodes ... invalid , should use expand_luck_outcome.\n";
-                exit(0);
-                break;
-        }
-        return ans;
-    }
-
-    void print() const noexcept override {
-        // 1. Convert the inherited Behavior enum to a string
-        std::string type_str = (behavior == MAX) ? "MAX" : (behavior == MIN ? "MIN" : "LUCK");
-
-        // 2. Print all the data
-        std::cout << "[Behavior: " << type_str 
-                  << " | Turns Left: " << current_turns 
-                  << " | Money: $" << current_money 
-                  << " | Last Action: " << action_to_string(act_taken) 
-                  << "]\n";
-    }
-private:
-std::string action_to_string(action a) const noexcept {
-        switch (a) {
-            case a1:   return "a1";
-            case a2:   return "a2";
-            case b1:   return "b1";
-            case b2:   return "b2";
-            case nada: return "nada";
-            default:   return "unknown";
-        }
-    }
+    diff(const char* _x1,const char* _x2) : dtd::Constraint<T>(_x1,_x2) {}
 };
 
-int main() {
+int main(void){
 
-    dtd::sa_node* init = new test_node(3,0,dtd::sa_node::Behavior::MAX);
-    
-    init->print();
+    // Define the variables (Territories)
+    std::vector<const char*> variables = {
+        "WA", "NT", "SA", "Q", "NSW", "V", "T"
+    };
 
-    auto res = dtd::sa_minimax_decision(init, 10);
-    auto res_v = dtd::sa_minimax_search(init, 10);
+    // Define the domain for each variable (3 colors: 1, 2, 3)
+    std::vector<std::set<int>> domains = {
+        {1, 2, 3}, // WA
+        {1, 2, 3}, // NT
+        {1, 2, 3}, // SA
+        {1, 2, 3}, // Q
+        {1, 2, 3}, // NSW
+        {1, 2, 3}, // V
+        {1, 2, 3}  // T
+    };
 
+    // Initialize the CSP
+    dtd::CSP<int> australia(variables, domains);
 
-    std::cout << "--------------------\n"; 
+    // Define the constraints (Neighboring regions must have different colors)
+    dtd::ConstraintChecker<int> aust_c;
 
-    res->print();
-    std::cout << "best eval is: "<< res_v << '\n';
+    // Constraints based on the map of Australia:
+    aust_c.constraints.push_back(new diff<int>("WA", "NT"));
+    aust_c.constraints.push_back(new diff<int>("WA", "SA"));
+    aust_c.constraints.push_back(new diff<int>("NT", "SA"));
+    aust_c.constraints.push_back(new diff<int>("NT", "Q"));
+    aust_c.constraints.push_back(new diff<int>("SA", "Q"));
+    aust_c.constraints.push_back(new diff<int>("SA", "NSW"));
+    aust_c.constraints.push_back(new diff<int>("SA", "V"));
+    aust_c.constraints.push_back(new diff<int>("Q", "NSW"));
+    aust_c.constraints.push_back(new diff<int>("NSW", "V"));
 
+    // Tasmania (T) has no neighbors on the mainland, so no diff constraints needed unless 
+    // you want to force it to be different from a specific state for some reason.
 
-    delete init;
-    delete res;
+    // Lets run Arc consistency (wont do much in this example)
+    if(!dtd::AC_3(australia, aust_c)){
+        std::cout << "Problem is not ARC CONSISTENT\n";
+        return 0;
+    }else{
+        std::cout << "Problem is ARC CONSISTENT\n";
+    }
 
-defer:
+    // Search for solutions
+    std::vector<dtd::Assignment<int>> solutions;
+    dtd::Assignment<int> current_assignment;
+
+    dtd::backtracking_search(australia, aust_c, 0, current_assignment, solutions);
+
+    // Output results
+    std::cout << "Backtrack found " << solutions.size() << " valid colorings." << std::endl;
+
+    if (!solutions.empty()) {
+        std::cout << "Example solution (First match):" << std::endl;
+        for(auto ass:solutions){
+            for (const auto& pair : ass) {
+                std::cout << pair.first << " -> Color " << pair.second << " | ";
+            }
+            std::cout << std::endl;
+        }
+    }
+
     return 0;
 }
