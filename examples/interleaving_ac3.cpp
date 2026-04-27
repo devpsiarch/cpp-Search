@@ -1,5 +1,5 @@
 #include <iostream>
-#include "./include/csp.hpp"
+#include "../include/csp.hpp"
 
 template <typename T>
 struct diff : public dtd::Constraint<T> {
@@ -97,7 +97,7 @@ int main(void){
     dtd::Assignment<int> current_assignment;
     dtd::OnlineAssignment<int> p(&Problem);
 
-    dtd::backtracking_search_interleaving_inference(p, vendita, p.get_next_variable(dtd::Option::VariableOrdering::None), solutions);
+    dtd::backtracking_search_interleaving_inference(p, vendita, 0, solutions);
     // dtd::backtracking_search(Problem,vendita,0,current_assignment,solutions);
 
     // Output results

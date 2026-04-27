@@ -3,16 +3,35 @@
 
 #include <queue>
 #include <set>
+#include <stack>
+#include <iostream>
 #include <unordered_map>
 #include <vector>
 #include <string>
 
-namespace dtd {
+#define panic(msg)                \
+do {                              \
+    printf("[PANIC]: %s.\n",msg); \
+    exit(1);                      \
+} while(0);                       
 
+namespace dtd {
 
 using Name = const char*;
 template <typename T>
 using Assignment = std::unordered_map<Name, T>; 
+
+namespace Option {
+    enum class Inference {
+        MAC,FC,None
+    };
+    enum class VariableOrdering {
+        MRV,DH,None
+    };
+    enum class ValueOrdering {
+        LCV,None
+    };
+};
 
 // this is the problem class that the users will have 
 // to enherite from to define there problem statement
@@ -36,7 +55,115 @@ public:
             }
         }
 
+
+
 };
+
+// a dynamic representation of a Assignment
+// it owns the set of ever chaning domains 
+// that correspond to each variable
+//
+// the handling of remove and re-add later 
+// is handle by this class and not exepected from 
+// any other inference algorithm
+template <typename T>
+struct OnlineAssignment {
+
+    size_t get_minimum_remaining_value(const char* xi) const {
+        return live_domains.top()[this->problem->domain_index.at(xi)].size();
+    }
+
+    struct MRVComparator {
+        const OnlineAssignment* parent; // Pointer to the main class instance
+        
+        MRVComparator(OnlineAssignment* p) : parent(p) {}
+
+        // The priority_queue uses this operator to compare elements
+        bool operator()(const char* a, const char* b) const {
+            return parent->get_minimum_remaining_value(a) > parent->get_minimum_remaining_value(b);
+        }
+    };
+
+
+    const CSP<T>* problem;
+    Assignment<T> values;
+    size_t number_of_assigned_values;
+
+    std::stack<std::vector<std::set<T>>> live_domains;
+
+    // maps each variable name to the number 
+    // of variables its related too 
+    // used in variables ordering
+    std::unordered_map<const char*,size_t> degree_map;
+
+    // we refrence a problen and keep it with us 
+    // we will not effect nore delete this problem
+    // used for variable ordering
+    std::priority_queue<const char*,std::vector<const char*>,MRVComparator> assign_queue;
+
+    // copy the set of domains from the problen statment
+    OnlineAssignment(const CSP<T>* problem)
+        : problem(problem) , values(), number_of_assigned_values(0) , assign_queue(MRVComparator(this)){
+        live_domains.push(problem->domains);
+        for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
+            assign_queue.push(this->problem->variables[i]);
+        }
+    }
+
+
+    // Main function to call during the backtracking search to perform 
+    // the variable orderig under some policy, return index of the next 
+    // variable to assign
+    size_t get_next_variable(Option::VariableOrdering option) const noexcept {
+        switch (option) {
+            case Option::VariableOrdering::MRV:
+                panic("MRV not implimented yet");
+                break;
+            case Option::VariableOrdering::DH:
+                panic("DH not implimented yet");
+                break;
+            case Option::VariableOrdering::None:
+                return this->number_of_assigned_values;
+                break;
+        }
+    }
+
+    // Main function called during the backtracking_search to perform 
+    // value ordering, we return a vector (for now a set) of values T ordered by a custom 
+    // ordering function
+    std::set<T> get_next_values(size_t index,Option::ValueOrdering option) const noexcept {
+        switch (option) {
+            case Option::ValueOrdering::LCV:
+                panic("LCV not implimented yet");
+                break;
+            case Option::ValueOrdering::None:
+                return live_domains.top()[index];
+                break;
+        }
+    }
+
+    
+    bool is_complete_assignment() const noexcept {
+        return this->number_of_assigned_values == this->problem->variables.size();
+    }
+
+};
+
+// some debug and printing function to make sure the 
+// algorithm are working properly 
+template <typename T>
+void inspect_live_domain(const OnlineAssignment<T>& assigned){
+    std::cout << "[INSPECT SEQUENCE]:\n";
+    for(const char* name:assigned.problem->variables){
+        size_t index = assigned.problem->domain_index.at(name);
+        std::cout << "D:" << name << " are:";
+        for(auto v:assigned.live_domains.top().at(index)){
+            std::cout << v << " ";
+        }
+        std::cout << '\n';
+    }
+    std::cout << "[INSPECT SEQUENCE].\n";
+}
 
 // encodes only binary constraints so far
 // maybe well add more constraint type in the future
@@ -190,6 +317,151 @@ bool revise_AC_3(CSP<T>& problem,const Constraint<T>* current_const){
     }
     return domain_changed;
 }
+
+// Forward Checking for Arc consistency
+template <typename T>
+bool FC(OnlineAssignment<T>& assigned,const ConstraintChecker<T>& checker){
+    std::vector<Constraint<T>*> agenda = checker.get_constriants();
+
+    // push a copy of the current domain on the stack 
+    assigned.live_domains.push(assigned.live_domains.top());
+
+    while(!agenda.empty()){
+        
+        Constraint<T>* current_const = agenda.back();
+        agenda.pop_back();
+
+        size_t xi = assigned.problem->domain_index.at(current_const->x1);
+
+        if(revise_inference(assigned, current_const)){
+            // check if a variable has empty set domain, thus cannot be solved
+            if(assigned.live_domains.top()[xi].size() <= 0) return false;
+
+            auto new_constraints = checker.get_constriants_x2(current_const->x1,current_const->x2);
+            // add the new updated constraint to the agenda
+            for(auto ptr:new_constraints){
+                agenda.push_back(ptr);
+            }
+        }
+    }
+    return true;
+}
+
+
+// Maintaining Arc consistency
+template <typename T>
+bool MAC(OnlineAssignment<T>& assigned,const ConstraintChecker<T>& checker){
+    std::vector<Constraint<T>*> agenda = checker.get_constriants();
+
+    // push a copy of the current domain on the stack 
+    assigned.live_domains.push(assigned.live_domains.top());
+
+    while(!agenda.empty()){
+        
+        Constraint<T>* current_const = agenda.back();
+        agenda.pop_back();
+
+        size_t xi = assigned.problem->domain_index.at(current_const->x1);
+
+        if(revise_inference(assigned, current_const)){
+            // check if a variable has empty set domain, thus cannot be solved
+            if(assigned.live_domains.top()[xi].size() <= 0) return false;
+
+            // we dont push new constraint into the agenda 
+            // like we did in the AC-3 algorithm
+        }
+    }
+    return true;
+}
+
+template <typename T>
+bool revise_inference(OnlineAssignment<T>&assigned,const Constraint<T>* current_const){
+    bool domain_changed = false;
+    size_t x1_domain = assigned.problem->domain_index.at(current_const->x1);
+    size_t x2_domain = assigned.problem->domain_index.at(current_const->x2);
+
+    for(T value1:assigned.live_domains.top()[x1_domain]){
+        bool satisfying_value_found = false;
+        for(T value2:assigned.live_domains.top()[x2_domain]){
+            if(current_const->is_satisfied(value1,value2)){
+                satisfying_value_found = true;
+            }
+        }
+        // if we could not found a value2 that satisfies the constraint 
+        // then we remove value1 from its domain
+        if(!satisfying_value_found){
+            assigned.live_domains.top()[x1_domain].erase(value1);
+            domain_changed = true;
+        }
+    }
+    return domain_changed;
+}
+
+
+template <typename T>
+void backtracking_search_interleaving_inference(
+        OnlineAssignment<T>& assigned,
+        const ConstraintChecker<T>& checker,
+        size_t index,
+        std::vector<Assignment<T>>& all_solutions,
+        Option::Inference strategy = Option::Inference::None,
+        Option::VariableOrdering varOrdering = Option::VariableOrdering::None,
+        Option::ValueOrdering valOrdering = Option::ValueOrdering::None
+        )
+{ 
+    // solution found (still sequential without variable selection)
+    if(assigned.is_complete_assignment()){
+        all_solutions.push_back(assigned.values);
+        return;
+    }
+
+    auto current_variable = assigned.problem->variables[index];
+
+    std::set<T> orderd_values = assigned.get_next_values(index,valOrdering);
+
+    for(auto value:orderd_values){
+        assigned.values[current_variable] = value;
+        assigned.number_of_assigned_values++;
+
+        // interleaving call
+        switch (strategy){
+            case Option::Inference::FC:
+                FC(assigned, checker);
+                break;
+            case Option::Inference::MAC:
+                MAC(assigned,checker);
+                break;
+            case Option::Inference::None:
+                // Do not inference the domain
+                break;
+        }
+        // inspect_live_domain(assigned);
+
+        if(checker.is_valid_assignment(assigned.values) == false){
+            goto defer;
+        }
+
+        backtracking_search(*assigned.problem,checker,assigned.get_next_variable(varOrdering),assigned.values,all_solutions);
+
+        defer:
+            // un-interleaver here
+            assigned.values.erase(current_variable);
+            assigned.number_of_assigned_values--;
+            switch (strategy){
+                case Option::Inference::None:
+                    // If we used no inference , then 
+                    // not fram was pushed to the stack then we do nothing
+                    break;
+                default:
+                    // else if we used any inference strategy , we have to pop
+                    // fram from the stack to get the previous live_domains
+                    assigned.live_domains.pop();
+                    break;
+            }
+            // inspect_live_domain(assigned);
+    } 
+}
+
 
 };  // end of namespace
 
