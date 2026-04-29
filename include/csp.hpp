@@ -1,6 +1,7 @@
 #ifndef CSP_H
 #define CSP_H
 
+#include <limits>
 #include <queue>
 #include <set>
 #include <stack>
@@ -59,111 +60,6 @@ public:
 
 };
 
-// a dynamic representation of a Assignment
-// it owns the set of ever chaning domains 
-// that correspond to each variable
-//
-// the handling of remove and re-add later 
-// is handle by this class and not exepected from 
-// any other inference algorithm
-template <typename T>
-struct OnlineAssignment {
-
-    size_t get_minimum_remaining_value(const char* xi) const {
-        return live_domains.top()[this->problem->domain_index.at(xi)].size();
-    }
-
-    struct MRVComparator {
-        const OnlineAssignment* parent; // Pointer to the main class instance
-        
-        MRVComparator(OnlineAssignment* p) : parent(p) {}
-
-        // The priority_queue uses this operator to compare elements
-        bool operator()(const char* a, const char* b) const {
-            return parent->get_minimum_remaining_value(a) > parent->get_minimum_remaining_value(b);
-        }
-    };
-
-
-    const CSP<T>* problem;
-    Assignment<T> values;
-    size_t number_of_assigned_values;
-
-    std::stack<std::vector<std::set<T>>> live_domains;
-
-    // maps each variable name to the number 
-    // of variables its related too 
-    // used in variables ordering
-    std::unordered_map<const char*,size_t> degree_map;
-
-    // we refrence a problen and keep it with us 
-    // we will not effect nore delete this problem
-    // used for variable ordering
-    std::priority_queue<const char*,std::vector<const char*>,MRVComparator> assign_queue;
-
-    // copy the set of domains from the problen statment
-    OnlineAssignment(const CSP<T>* problem)
-        : problem(problem) , values(), number_of_assigned_values(0) , assign_queue(MRVComparator(this)){
-        live_domains.push(problem->domains);
-        for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
-            assign_queue.push(this->problem->variables[i]);
-        }
-    }
-
-
-    // Main function to call during the backtracking search to perform 
-    // the variable orderig under some policy, return index of the next 
-    // variable to assign
-    size_t get_next_variable(Option::VariableOrdering option) const noexcept {
-        switch (option) {
-            case Option::VariableOrdering::MRV:
-                panic("MRV not implimented yet");
-                break;
-            case Option::VariableOrdering::DH:
-                panic("DH not implimented yet");
-                break;
-            case Option::VariableOrdering::None:
-                return this->number_of_assigned_values;
-                break;
-        }
-    }
-
-    // Main function called during the backtracking_search to perform 
-    // value ordering, we return a vector (for now a set) of values T ordered by a custom 
-    // ordering function
-    std::set<T> get_next_values(size_t index,Option::ValueOrdering option) const noexcept {
-        switch (option) {
-            case Option::ValueOrdering::LCV:
-                panic("LCV not implimented yet");
-                break;
-            case Option::ValueOrdering::None:
-                return live_domains.top()[index];
-                break;
-        }
-    }
-
-    
-    bool is_complete_assignment() const noexcept {
-        return this->number_of_assigned_values == this->problem->variables.size();
-    }
-
-};
-
-// some debug and printing function to make sure the 
-// algorithm are working properly 
-template <typename T>
-void inspect_live_domain(const OnlineAssignment<T>& assigned){
-    std::cout << "[INSPECT SEQUENCE]:\n";
-    for(const char* name:assigned.problem->variables){
-        size_t index = assigned.problem->domain_index.at(name);
-        std::cout << "D:" << name << " are:";
-        for(auto v:assigned.live_domains.top().at(index)){
-            std::cout << v << " ";
-        }
-        std::cout << '\n';
-    }
-    std::cout << "[INSPECT SEQUENCE].\n";
-}
 
 // encodes only binary constraints so far
 // maybe well add more constraint type in the future
@@ -239,6 +135,152 @@ struct ConstraintChecker {
         return ans;
     }
 };
+
+
+
+
+// a dynamic representation of a Assignment
+// it owns the set of ever chaning domains 
+// that correspond to each variable
+//
+// the handling of remove and re-add later 
+// is handle by this class and not exepected from 
+// any other inference algorithm
+template <typename T>
+struct OnlineAssignment {
+
+    size_t get_minimum_remaining_value(const char* xi) const {
+        return live_domains.top()[this->problem->domain_index.at(xi)].size();
+    }
+
+    struct MRVComparator {
+        const OnlineAssignment* parent; // Pointer to the main class instance
+        
+        MRVComparator(OnlineAssignment* p) : parent(p) {}
+
+        // The priority_queue uses this operator to compare elements
+        bool operator()(const char* a, const char* b) const {
+            return parent->get_minimum_remaining_value(a) > parent->get_minimum_remaining_value(b);
+        }
+    };
+
+
+    const CSP<T>* problem;
+    Assignment<T> values;
+    size_t number_of_assigned_values;
+
+    std::stack<std::vector<std::set<T>>> live_domains;
+
+    // maps each variable name to the number 
+    // of variables its related too 
+    // used in variables ordering
+    std::unordered_map<const char*,size_t> degree_map;
+
+    // we refrence a problen and keep it with us 
+    // we will not effect nore delete this problem
+    // used for variable ordering
+    std::priority_queue<const char*,std::vector<const char*>,MRVComparator> assign_queue;
+
+    // copy the set of domains from the problen statment
+    OnlineAssignment(const CSP<T>* problem,const ConstraintChecker<T>& checker)
+        : problem(problem) , values(), number_of_assigned_values(0) , assign_queue(MRVComparator(this)){
+        live_domains.push(problem->domains);
+        for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
+            assign_queue.push(this->problem->variables[i]);
+        }
+        
+        // populate degree_map member variables the contains the 
+        // number of tied variables to another by a constraint 
+        // used to variable ordering
+        
+        // init to 0 before anything happens
+        for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
+            this->degree_map[this->problem->variables[i]] = 0;
+        }
+        // populate
+        std::vector<Constraint<T>*> const_list = checker.get_constriants();
+        for(size_t i = 0 ; i < const_list.size() ; i++){
+            this->degree_map[const_list[i]->x1]++;
+        }
+    }
+
+
+    // Main function to call during the backtracking search to perform 
+    // the variable orderig under some policy, return index of the next 
+    // variable to assign
+    size_t get_next_variable(Option::VariableOrdering option) const noexcept {
+        switch (option) {
+            case Option::VariableOrdering::MRV:{
+                int variable_index = 0;
+                size_t min_domain = std::numeric_limits<size_t>::max();
+                for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
+                    const char* name = this->problem->variables[i];
+                    if(this->values.find(name) != this->values.end()) continue;
+                    if(this->live_domains.top()[i].size() < min_domain){
+                        min_domain = this->live_domains.top()[i].size();
+                        variable_index = i;
+                    }
+                }
+                return variable_index;
+                break;
+            }
+            case Option::VariableOrdering::DH:{
+                int variable_index = 0;
+                size_t max_domain = std::numeric_limits<size_t>::min();
+                for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
+                    const char* name = this->problem->variables[i];
+                    if(this->values.find(name) != this->values.end()) continue;
+                    if(this->degree_map.at(name) > max_domain){
+                        max_domain = this->live_domains.top()[i].size();
+                        variable_index = i;
+                    }
+                }
+                return variable_index;               
+                break;
+            }
+            case Option::VariableOrdering::None:
+                return this->number_of_assigned_values;
+                break;
+        }
+    }
+
+    // Main function called during the backtracking_search to perform 
+    // value ordering, we return a vector (for now a set) of values T ordered by a custom 
+    // ordering function
+    std::set<T> get_next_values(size_t index,Option::ValueOrdering option) const noexcept {
+        switch (option) {
+            case Option::ValueOrdering::LCV:
+                panic("LCV not implimented yet");
+                break;
+            case Option::ValueOrdering::None:
+                return live_domains.top()[index];
+                break;
+        }
+    }
+
+    
+    bool is_complete_assignment() const noexcept {
+        return this->number_of_assigned_values == this->problem->variables.size();
+    }
+
+};
+
+// some debug and printing function to make sure the 
+// algorithm are working properly 
+template <typename T>
+void inspect_live_domain(const OnlineAssignment<T>& assigned){
+    std::cout << "[INSPECT SEQUENCE]:\n";
+    for(const char* name:assigned.problem->variables){
+        size_t index = assigned.problem->domain_index.at(name);
+        std::cout << "D:" << name << " are:";
+        for(auto v:assigned.live_domains.top().at(index)){
+            std::cout << v << " ";
+        }
+        std::cout << '\n';
+    }
+    std::cout << "[INSPECT SEQUENCE].\n";
+}
+
 
 template <typename T>
 void backtracking_search(const CSP<T>& problem,
@@ -441,7 +483,16 @@ void backtracking_search_interleaving_inference(
             goto defer;
         }
 
-        backtracking_search(*assigned.problem,checker,assigned.get_next_variable(varOrdering),assigned.values,all_solutions);
+
+        backtracking_search_interleaving_inference(
+            assigned,
+            checker,
+            assigned.get_next_variable(varOrdering),
+            all_solutions,
+            strategy,
+            varOrdering,
+            valOrdering
+        );
 
         defer:
             // un-interleaver here

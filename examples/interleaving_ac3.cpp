@@ -95,7 +95,7 @@ int main(void){
     // Search for solutions
     std::vector<dtd::Assignment<int>> solutions;
     dtd::Assignment<int> current_assignment;
-    dtd::OnlineAssignment<int> p(&Problem);
+    dtd::OnlineAssignment<int> p(&Problem,vendita);
 
     dtd::backtracking_search_interleaving_inference(p, vendita, 0, solutions);
     // dtd::backtracking_search(Problem,vendita,0,current_assignment,solutions);

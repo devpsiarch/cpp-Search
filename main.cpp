@@ -76,12 +76,12 @@ int main(void){
     vendita.constraints.push_back(new lesser<int>("B", "A"));
 
     // Lets run Arc consistency (wont do much in this example)
-    // if(!dtd::AC_3(Problem, vendita)){
-    //     std::cout << "Problem is not ARC CONSISTENT\n";
-    //     return 0;
-    // }else{
-    //     std::cout << "Problem is ARC CONSISTENT\n";
-    // }
+    if(!dtd::AC_3(Problem, vendita)){
+        std::cout << "Problem is not ARC CONSISTENT\n";
+        return 0;
+    }else{
+        std::cout << "Problem is ARC CONSISTENT\n";
+    }
 
     for(const char* name:Problem.variables){
         size_t index = Problem.domain_index[name];
@@ -95,9 +95,24 @@ int main(void){
     // Search for solutions
     std::vector<dtd::Assignment<int>> solutions;
     dtd::Assignment<int> current_assignment;
-    dtd::OnlineAssignment<int> p(&Problem);
+    dtd::OnlineAssignment<int> p(&Problem,vendita);
 
-    dtd::backtracking_search_interleaving_inference(p, vendita, p.get_next_variable(dtd::Option::VariableOrdering::None), solutions);
+    
+    for(size_t i = 0 ; i < p.problem->variables.size(); i ++){
+        const char* name = p.problem->variables[i];
+        std::cout << "variable " << name << " has " << p.degree_map[name] << " connections to others\n";
+    }
+
+
+    dtd::backtracking_search_interleaving_inference(
+            p,
+            vendita,
+            p.get_next_variable(dtd::Option::VariableOrdering::MRV),
+            solutions,
+            dtd::Option::Inference::None,
+            dtd::Option::VariableOrdering::DH,
+            dtd::Option::ValueOrdering::None
+    );
     // dtd::backtracking_search(Problem,vendita,0,current_assignment,solutions);
 
     // Output results
