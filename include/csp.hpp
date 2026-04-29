@@ -2,7 +2,7 @@
 #define CSP_H
 
 #include <limits>
-#include <queue>
+#include <algorithm>
 #include <set>
 #include <stack>
 #include <iostream>
@@ -149,23 +149,10 @@ struct ConstraintChecker {
 template <typename T>
 struct OnlineAssignment {
 
-    size_t get_minimum_remaining_value(const char* xi) const {
-        return live_domains.top()[this->problem->domain_index.at(xi)].size();
-    }
-
-    struct MRVComparator {
-        const OnlineAssignment* parent; // Pointer to the main class instance
-        
-        MRVComparator(OnlineAssignment* p) : parent(p) {}
-
-        // The priority_queue uses this operator to compare elements
-        bool operator()(const char* a, const char* b) const {
-            return parent->get_minimum_remaining_value(a) > parent->get_minimum_remaining_value(b);
-        }
-    };
 
 
     const CSP<T>* problem;
+    const ConstraintChecker<T>* checker;
     Assignment<T> values;
     size_t number_of_assigned_values;
 
@@ -176,18 +163,41 @@ struct OnlineAssignment {
     // used in variables ordering
     std::unordered_map<const char*,size_t> degree_map;
 
-    // we refrence a problen and keep it with us 
-    // we will not effect nore delete this problem
-    // used for variable ordering
-    std::priority_queue<const char*,std::vector<const char*>,MRVComparator> assign_queue;
+    
+    size_t get_eliminated(size_t index,const T& v) const {
+        size_t eliminated = 0;
+        const char* xi = this->problem->variables[index];
+        for(const Constraint<T>* cons:this->checker->constraints){
+            // only concerned variables
+            if(cons->x1 != xi && cons->x2 != xi) continue;
+
+            const char* neighbor = (cons->x1 == xi) 
+                ? 
+            cons->x2 
+                :
+            cons->x1;
+
+            // LCV cars only about unassigned values
+            if(this->values.find(neighbor) == this->values.end()){
+                for(const T n_v:this->live_domains.top()[this->problem->domain_index.at(neighbor)]){
+                    bool satisfied = (cons->x1 == xi) 
+                    ? cons->is_satisfied(v, n_v) 
+                    : cons->is_satisfied(n_v, v);
+
+                    if (!satisfied) {
+                        eliminated++;
+                    }
+                }
+            }
+        }
+        return eliminated;
+    }
 
     // copy the set of domains from the problen statment
-    OnlineAssignment(const CSP<T>* problem,const ConstraintChecker<T>& checker)
-        : problem(problem) , values(), number_of_assigned_values(0) , assign_queue(MRVComparator(this)){
+    OnlineAssignment(const CSP<T>* problem,const ConstraintChecker<T>* checker)
+        : problem(problem) , checker(checker), values(), number_of_assigned_values(0){
         live_domains.push(problem->domains);
-        for(size_t i = 0 ; i < this->problem->variables.size() ; i++){
-            assign_queue.push(this->problem->variables[i]);
-        }
+
         
         // populate degree_map member variables the contains the 
         // number of tied variables to another by a constraint 
@@ -198,7 +208,7 @@ struct OnlineAssignment {
             this->degree_map[this->problem->variables[i]] = 0;
         }
         // populate
-        std::vector<Constraint<T>*> const_list = checker.get_constriants();
+        std::vector<Constraint<T>*> const_list = checker->get_constriants();
         for(size_t i = 0 ; i < const_list.size() ; i++){
             this->degree_map[const_list[i]->x1]++;
         }
@@ -247,15 +257,25 @@ struct OnlineAssignment {
     // Main function called during the backtracking_search to perform 
     // value ordering, we return a vector (for now a set) of values T ordered by a custom 
     // ordering function
-    std::set<T> get_next_values(size_t index,Option::ValueOrdering option) const noexcept {
+    std::vector<T> get_next_values(size_t index,Option::ValueOrdering option) const noexcept {
+        std::vector<T> ans;
         switch (option) {
-            case Option::ValueOrdering::LCV:
-                panic("LCV not implimented yet");
+            case Option::ValueOrdering::LCV:{
+                for(const T v:live_domains.top()[index]) ans.emplace_back(v);
+  
+                std::sort(ans.begin(), ans.end(), [&](const T& a, const T& b) {
+                    // We want the value that eliminates the FEWEST options to come first
+                    return get_eliminated(index, a) < get_eliminated(index, b);
+                });
+
                 break;
+            }
             case Option::ValueOrdering::None:
-                return live_domains.top()[index];
+                // just return the same order that the live domain found
+                for(const T v:live_domains.top()[index]) ans.emplace_back(v);
                 break;
         }
+        return ans;
     }
 
     
@@ -443,7 +463,6 @@ bool revise_inference(OnlineAssignment<T>&assigned,const Constraint<T>* current_
 template <typename T>
 void backtracking_search_interleaving_inference(
         OnlineAssignment<T>& assigned,
-        const ConstraintChecker<T>& checker,
         size_t index,
         std::vector<Assignment<T>>& all_solutions,
         Option::Inference strategy = Option::Inference::None,
@@ -459,7 +478,7 @@ void backtracking_search_interleaving_inference(
 
     auto current_variable = assigned.problem->variables[index];
 
-    std::set<T> orderd_values = assigned.get_next_values(index,valOrdering);
+    std::vector<T> orderd_values = assigned.get_next_values(index,valOrdering);
 
     for(auto value:orderd_values){
         assigned.values[current_variable] = value;
@@ -468,10 +487,10 @@ void backtracking_search_interleaving_inference(
         // interleaving call
         switch (strategy){
             case Option::Inference::FC:
-                FC(assigned, checker);
+                FC(assigned, *assigned.checker);
                 break;
             case Option::Inference::MAC:
-                MAC(assigned,checker);
+                MAC(assigned, *assigned.checker);
                 break;
             case Option::Inference::None:
                 // Do not inference the domain
@@ -479,14 +498,13 @@ void backtracking_search_interleaving_inference(
         }
         // inspect_live_domain(assigned);
 
-        if(checker.is_valid_assignment(assigned.values) == false){
+        if(assigned.checker->is_valid_assignment(assigned.values) == false){
             goto defer;
         }
 
 
         backtracking_search_interleaving_inference(
             assigned,
-            checker,
             assigned.get_next_variable(varOrdering),
             all_solutions,
             strategy,

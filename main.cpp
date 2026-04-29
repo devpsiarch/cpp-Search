@@ -95,7 +95,7 @@ int main(void){
     // Search for solutions
     std::vector<dtd::Assignment<int>> solutions;
     dtd::Assignment<int> current_assignment;
-    dtd::OnlineAssignment<int> p(&Problem,vendita);
+    dtd::OnlineAssignment<int> p(&Problem,&vendita);
 
     
     for(size_t i = 0 ; i < p.problem->variables.size(); i ++){
@@ -106,12 +106,11 @@ int main(void){
 
     dtd::backtracking_search_interleaving_inference(
             p,
-            vendita,
             p.get_next_variable(dtd::Option::VariableOrdering::MRV),
             solutions,
             dtd::Option::Inference::None,
             dtd::Option::VariableOrdering::DH,
-            dtd::Option::ValueOrdering::None
+            dtd::Option::ValueOrdering::LCV
     );
     // dtd::backtracking_search(Problem,vendita,0,current_assignment,solutions);
 
