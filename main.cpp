@@ -112,6 +112,7 @@ int main(void){
             dtd::Option::VariableOrdering::DH,
             dtd::Option::ValueOrdering::LCV
     );
+    
     // dtd::backtracking_search(Problem,vendita,0,current_assignment,solutions);
 
     // Output results
